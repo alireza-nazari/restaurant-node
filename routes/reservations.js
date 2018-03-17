@@ -127,13 +127,37 @@ router.post('/', function (req, res, next) {
         } else {
           if ('time' in req.body && 'table' in req.body) {
             // Everything succeeded
-            // console.log(req.body.time)
+            const timePicked = moment.utc(req.body.time)
+
             const reservation = new Reservation({
               user: user._id,
-              //   time: new Date(req.body.time),
-              time: moment.utc(req.body.time),
+              time: timePicked,
               table: req.body.table
             })
+
+            // check if time is possible
+            const possibleReservations = getPossibleReservations()
+
+            console.log('Your time', timePicked)
+
+            if (req.body.table in Object.keys(possibleReservations)) {
+              let timePossible = false
+              possibleReservations[req.body.table].forEach(
+                possibleReservation => {
+                  if (possibleReservation.isSame(timePicked)) {
+                    console.log(possibleReservation)
+                    timePossible = true
+                  }
+                }
+              )
+              if (!timePossible) {
+                res.status(400).json({ time: 'This time is not available!' })
+                return
+              }
+            } else {
+              res.status(400).json({ table: 'This table does not exist.' })
+              return
+            }
 
             reservation.save(function (err) {
               if (err) {
