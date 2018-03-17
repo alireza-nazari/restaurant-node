@@ -60,10 +60,19 @@ function getPossibleReservations () {
   return availableHours
 }
 
-// console.log(getPossibleReservations())
-
-/* GET reservations listing. */
+// GET all reservations
 router.get('/', function (req, res, next) {
+  Reservation.find({ time: { $gte: openFrom, $lte: openUntil } }, function (
+    err,
+    reservations
+  ) {
+    if (err) res.json(err)
+    else res.json(reservations)
+  })
+})
+
+/* GET available tables and times listing. */
+router.get('/available', function (req, res, next) {
   // get a list of all possible reservations and turn it
   // into a list of available reservations
   // based on current reservations
@@ -107,6 +116,7 @@ router.get('/', function (req, res, next) {
 
 router.post('/', function (req, res, next) {
   var token = req.headers['x-access-token']
+
   if (!token) {
     return res.status(401).json({ auth: false, message: 'No token provided.' })
   }
@@ -119,6 +129,7 @@ router.post('/', function (req, res, next) {
       // checks if expired, etc.
       res.status(400).json(err)
     } else {
+      // get the user by token
       User.findOne({ token }, function (err, user) {
         if (err) {
           res.status(400).json(err)
@@ -135,17 +146,15 @@ router.post('/', function (req, res, next) {
               table: req.body.table
             })
 
-            // check if time is possible
+            // check if time is allowed
             const possibleReservations = getPossibleReservations()
-
-            console.log('Your time', timePicked)
 
             if (req.body.table in Object.keys(possibleReservations)) {
               let timePossible = false
               possibleReservations[req.body.table].forEach(
                 possibleReservation => {
                   if (possibleReservation.isSame(timePicked)) {
-                    console.log(possibleReservation)
+                    // this time is allowed!
                     timePossible = true
                   }
                 }
@@ -158,6 +167,7 @@ router.post('/', function (req, res, next) {
               res.status(400).json({ table: 'This table does not exist.' })
               return
             }
+            //
 
             reservation.save(function (err) {
               if (err) {
@@ -179,13 +189,192 @@ router.post('/', function (req, res, next) {
   })
 })
 
-router.get('/table:id', function (req, res, next) {
-  // get table details
+router.get('/mine', function (req, res, next) {
+  var token = req.headers['x-access-token']
+
+  if (!token) {
+    return res.status(401).json({ auth: false, message: 'No token provided.' })
+  }
+
+  jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
+    err,
+    decoded
+  ) {
+    if (err) {
+      // checks if expired, etc.
+      res.status(400).json(err)
+    } else {
+      // get the user by token
+      User.findOne({ token }, function (err, user) {
+        if (err) {
+          res.status(400).json(err)
+        } else if (!user) {
+          res.status(400).json({ token: 'Token invalid.' })
+        } else {
+          Reservation.find({ user }, function (err, reservations) {
+            if (err) res.status(400).json(err)
+            else {
+              res.json(reservations)
+            }
+          })
+        }
+      })
+    }
+  })
 })
 
-router.get('reservation/:id', function (req, res, next) {
-  // get reservation details:
-  // who is going (could be many people)
+router.post('/:id/invite', function (req, res, next) {
+  var token = req.headers['x-access-token']
+
+  if (!token) {
+    return res.status(401).json({ auth: false, message: 'No token provided.' })
+  }
+
+  if (!req.body.guest) {
+    res.status(400).json({ guest: 'Provide `guest` field.' })
+    return
+  }
+
+  if (!req.body.guestId) {
+    res.status(400).json({ guestId: 'Provide `guestId` field.' })
+    return
+  }
+
+  if (req.body.guestId > 3 || req.body.guestId < 1) {
+    res.status(400).json({ guestId: 'Provide a number between 1 and 3' })
+  }
+
+  jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
+    err,
+    decoded
+  ) {
+    if (err) {
+      // checks if expired, etc.
+      res.status(400).json(err)
+      return
+    }
+    // get the user by token
+    User.findOne({ token }, function (err, user) {
+      if (err) {
+        res.status(400).json(err)
+        return
+      } else if (!user) {
+        res.status(401).json({ token: 'Token invalid.' })
+        return
+      }
+      Reservation.findById(req.params.id, function (err, reservation) {
+        if (err) {
+          res.json(err)
+          return
+        }
+        if (reservation.user.equals(user._id)) {
+          // when tokens match
+          // get guest ID
+          User.findOne({ username: req.body.guest }, function (err, guestUser) {
+            if (err) {
+              res.status(400).json(err)
+              return
+            }
+            if (!guestUser) {
+              res.status(400).json({
+                guest: 'Guest with the specified username not found.'
+              })
+              return
+            }
+            // add this guest to the table
+            reservation.update(
+              { [`guest${req.body.guestId}`]: guestUser },
+              function (err, raw) {
+                if (err) res.json(err)
+                else {
+                  Reservation.findById(req.params.id, function (
+                    err,
+                    reservation
+                  ) {
+                    if (err) {
+                      res.json(err)
+                      return
+                    }
+                    // successful invitation. Return the object
+                    res.json(reservation)
+                  })
+                }
+              }
+            )
+          })
+        } else {
+          res.status(401).json({ token: 'Invalid token.' })
+        }
+      })
+    })
+  })
+})
+
+router.post('/:id/kick', function (req, res, next) {
+  var token = req.headers['x-access-token']
+
+  if (!token) {
+    return res.status(401).json({ auth: false, message: 'No token provided.' })
+  }
+
+  if (!req.body.guestId) {
+    res.status(400).json({ guestId: 'Provide `guestId` field.' })
+    return
+  }
+
+  if (req.body.guestId > 3 || req.body.guestId < 1) {
+    res.status(400).json({ guestId: 'Provide a number between 1 and 3' })
+  }
+
+  jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
+    err,
+    decoded
+  ) {
+    if (err) {
+      // checks if expired, etc.
+      res.status(400).json(err)
+      return
+    }
+    // get the user by token
+    User.findOne({ token }, function (err, user) {
+      if (err) {
+        res.status(400).json(err)
+        return
+      } else if (!user) {
+        res.status(401).json({ token: 'Token invalid.' })
+        return
+      }
+      Reservation.findById(req.params.id, function (err, reservation) {
+        if (err) {
+          res.json(err)
+          return
+        }
+        if (reservation.user.equals(user._id)) {
+          // when tokens match
+          // kick this guest from the table
+          // TODO remove their orders
+          reservation.update(
+            { [`guest${req.body.guestId}`]: undefined },
+            function (err, raw) {
+              if (err) res.json(err)
+              else {
+                Reservation.findById(req.params.id, function (err, reservation) {
+                  if (err) {
+                    res.json(err)
+                    return
+                  }
+                  // successful kick. Return the object.
+                  res.json(reservation)
+                })
+              }
+            }
+          )
+        } else {
+          res.status(401).json({ token: 'Invalid token.' })
+        }
+      })
+    })
+  })
 })
 
 module.exports = router
