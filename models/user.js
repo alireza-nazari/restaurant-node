@@ -5,7 +5,8 @@ var Schema = mongoose.Schema
 
 var userSchema = new Schema({
   username: { type: String, required: true, unique: true, max: 20 },
-  password: { type: String, required: true }
+  password: { type: String, required: true },
+  token: { type: String, required: true }
 })
 
 userSchema.pre('save', function (next) {

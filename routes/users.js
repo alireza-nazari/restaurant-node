@@ -1,13 +1,24 @@
 var express = require('express')
 var router = express.Router()
+var jwt = require('jsonwebtoken')
+var fs = require('fs')
 
 var User = require('../models/user')
+
+const publicKey = fs.readFileSync('./public.key')
+const privateKey = fs.readFileSync('./private.key')
 
 /* GET users listing. */
 router.get('/', function (req, res, next) {
   res.json({ users: 'Hello from /users' })
-  next()
 })
+
+function getNewToken () {
+  return jwt.sign({}, privateKey, {
+    algorithm: 'RS256',
+    expiresIn: '18h'
+  })
+}
 
 // create a new user
 router.post('/', function (req, res, next) {
@@ -15,19 +26,23 @@ router.post('/', function (req, res, next) {
     res.status(400).json({ password: 'Provide at least 6 characters' })
     return
   }
+  var token = getNewToken()
   const user = new User({
     username: req.body.username,
-    password: req.body.password
+    password: req.body.password,
+    token
   })
   user.save(function (err) {
     if (err) {
       res.status(400).json({ message: err.message })
     } else {
-      res.json({ id: user._id, username: user.username, token: '' })
+      res.json({ id: user._id, username: user.username, token })
     }
   })
 })
+// </create a new user>
 
+// <login route>
 router.post('/login', function (req, res, next) {
   // validation
   if (!('username' in req.body)) {
@@ -42,11 +57,11 @@ router.post('/login', function (req, res, next) {
   User.findOne({ username: req.body.username }, function (err, user) {
     if (err) {
       res.json(err)
-      next()
+      return
     }
     if (!user) {
       res.json({ username: 'User with a given `username` was not found.' })
-      next()
+      return
     }
 
     user.comparePassword(req.body.password, function (err, isMatch) {
@@ -54,7 +69,12 @@ router.post('/login', function (req, res, next) {
         res.status(400).json(err)
       } else {
         if (isMatch) {
-          res.json({ token: 'get your token here' })
+          var token = getNewToken()
+          user.update({ token }, function (err, raw) {
+            console.log(raw)
+            if (err) res.json(err)
+            else res.json({ token, id: user._id, username: user.username })
+          })
         } else {
           res.status(400).json({ password: 'Password incorrect.' })
         }
@@ -62,5 +82,6 @@ router.post('/login', function (req, res, next) {
     })
   })
 })
+// </login route>
 
 module.exports = router

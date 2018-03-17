@@ -1,2 +1,4 @@
 node_modules
 mongoConfig.js
+private.key
+public.key
