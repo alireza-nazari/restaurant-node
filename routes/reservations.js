@@ -10,13 +10,15 @@ var User = require('../models/user')
 const publicKey = fs.readFileSync('./public.key')
 const privateKey = fs.readFileSync('./private.key')
 
-const openFrom = moment()
+const openFrom = moment
+  .utc()
   .hour(8)
   .minute(0)
   .second(0)
   .millisecond(0)
 
-const openUntil = moment()
+const openUntil = moment
+  .utc()
   .hour(16)
   .minute(0)
   .second(0)
@@ -25,9 +27,9 @@ const openUntil = moment()
 const consumptionTime = 25 // minutes
 const cleanupTime = 5
 
-function getAvailableReservations () {
+function getPossibleReservations () {
   let availableHours = {
-    // shift all in time by 5 minutes
+    // shift all tables in time by 5 minutes
     1: [openFrom.clone()],
     2: [openFrom.clone().add(5, 'minutes')],
     3: [openFrom.clone().add(10, 'minutes')],
@@ -54,18 +56,53 @@ function getAvailableReservations () {
       )
     }
   })
-  console.log(availableHours)
+
+  return availableHours
 }
 
-getAvailableReservations()
+// console.log(getPossibleReservations())
 
 /* GET reservations listing. */
 router.get('/', function (req, res, next) {
-  Reservation.find(function (err, res2) {
-    if (err) res.json(err)
-    else res.json(res2)
+  // get a list of all possible reservations and turn it
+  // into a list of available reservations
+  // based on current reservations
+  let possibleReservations = getPossibleReservations()
+
+  Reservation.find({ time: { $gte: openFrom, $lte: openUntil } }, function (
+    err,
+    reservations
+  ) {
+    if (err) res.status(400).json(err)
+    else {
+      let toRemove = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }
+
+      reservations.forEach(function (reservation) {
+        const reservationTime = moment.utc(reservation.time)
+
+        possibleReservations[reservation.table].forEach(function (
+          possibleReservation,
+          idx
+        ) {
+          if (possibleReservation.isSame(reservationTime)) {
+            toRemove[reservation.table].push(idx)
+          }
+        })
+      })
+
+      // remove unavailable times for each table
+      Object.keys(toRemove).forEach(function (key) {
+        const indicesToRemove = toRemove[key].sort(function (a, b) {
+          return b - a
+        })
+        indicesToRemove.forEach(idxToRemove => {
+          possibleReservations[key].splice(idxToRemove, 1)
+        })
+      })
+
+      res.json(possibleReservations)
+    }
   })
-  //   res.json({ reservations: 'Hello from /reservations' })
 })
 
 router.post('/', function (req, res, next) {
@@ -88,19 +125,26 @@ router.post('/', function (req, res, next) {
         } else if (!user) {
           res.status(400).json({ token: 'Token invalid.' })
         } else {
-          //   res.json({ username: user.username, id: user._id })
-
           if ('time' in req.body && 'table' in req.body) {
             // Everything succeeded
+            // console.log(req.body.time)
             const reservation = new Reservation({
               user: user._id,
-              time: req.body.time,
+              //   time: new Date(req.body.time),
+              time: moment.utc(req.body.time),
               table: req.body.table
             })
 
             reservation.save(function (err) {
-              if (err) res.json(err)
-              else res.json({ reservation })
+              if (err) {
+                if (err.code === 11000) {
+                  res.status(400).json({
+                    table: 'This table is already taken for this hour.'
+                  })
+                } else res.status(400).json(err)
+              } else {
+                res.json({ reservation })
+              }
             })
           } else {
             res.json('Please specify `time` and `table` fields.')
@@ -109,6 +153,15 @@ router.post('/', function (req, res, next) {
       })
     }
   })
+})
+
+router.get('/table:id', function (req, res, next) {
+  // get table details
+})
+
+router.get('reservation/:id', function (req, res, next) {
+  // get reservation details:
+  // who is going (could be many people)
 })
 
 module.exports = router
