@@ -3,10 +3,13 @@ var bcrypt = require('bcrypt')
 
 var Schema = mongoose.Schema
 
+const ROLES = require('../roles')
+
 var userSchema = new Schema({
   username: { type: String, required: true, unique: true, max: 20 },
   password: { type: String, required: true },
-  token: { type: String, required: true }
+  token: { type: String, required: true },
+  role: { type: Number, default: ROLES.CUSTOMER }
 })
 
 userSchema.pre('save', function (next) {
