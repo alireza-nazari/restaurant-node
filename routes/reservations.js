@@ -235,15 +235,6 @@ router.post('/:id/invite', function (req, res, next) {
     return
   }
 
-  if (!req.body.guestId) {
-    res.status(400).json({ guestId: 'Provide `guestId` field.' })
-    return
-  }
-
-  if (req.body.guestId > 3 || req.body.guestId < 1) {
-    res.status(400).json({ guestId: 'Provide a number between 1 and 3' })
-  }
-
   jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
     err,
     decoded
@@ -281,26 +272,48 @@ router.post('/:id/invite', function (req, res, next) {
               })
               return
             }
+
+            // check if this user is trying to invite himself
+            if (guestUser._id.equals(user._id)) {
+              res.status(400).json({ guest: 'You cannot invite yourself!' })
+              return
+            }
+
+            // check if the maximum number of guests has been reached
+            if (reservation.guests.length >= 3) {
+              res.status(400).json({
+                guests: 'The maximum number of guests has been reached'
+              })
+              return
+            }
+
+            // check whether this user has already been invited
+            if (reservation.guests.indexOf(guestUser._id) > -1) {
+              res.status(400).json({
+                guest: 'This guest has already been invited!'
+              })
+              return
+            }
+
+            const guestListUpdated = [...reservation.guests, guestUser]
+
             // add this guest to the table
-            reservation.update(
-              { [`guest${req.body.guestId}`]: guestUser },
-              function (err, raw) {
-                if (err) res.json(err)
-                else {
-                  Reservation.findById(req.params.id, function (
-                    err,
-                    reservation
-                  ) {
-                    if (err) {
-                      res.json(err)
-                      return
-                    }
-                    // successful invitation. Return the object
-                    res.json(reservation)
-                  })
-                }
+            reservation.update({ guests: guestListUpdated }, function (
+              err,
+              raw
+            ) {
+              if (err) res.json(err)
+              else {
+                Reservation.findById(req.params.id, function (err, reservation) {
+                  if (err) {
+                    res.json(err)
+                    return
+                  }
+                  // successful invitation. Return the object
+                  res.json(reservation)
+                })
               }
-            )
+            })
           })
         } else {
           res.status(401).json({ token: 'Invalid token.' })
@@ -320,10 +333,6 @@ router.post('/:id/kick', function (req, res, next) {
   if (!req.body.guestId) {
     res.status(400).json({ guestId: 'Provide `guestId` field.' })
     return
-  }
-
-  if (req.body.guestId > 3 || req.body.guestId < 1) {
-    res.status(400).json({ guestId: 'Provide a number between 1 and 3' })
   }
 
   jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
@@ -346,29 +355,39 @@ router.post('/:id/kick', function (req, res, next) {
       }
       Reservation.findById(req.params.id, function (err, reservation) {
         if (err) {
-          res.json(err)
+          res.status(400).json(err)
           return
         }
         if (reservation.user.equals(user._id)) {
           // when tokens match
           // kick this guest from the table
           // TODO remove their orders
-          reservation.update(
-            { [`guest${req.body.guestId}`]: undefined },
-            function (err, raw) {
-              if (err) res.json(err)
-              else {
-                Reservation.findById(req.params.id, function (err, reservation) {
-                  if (err) {
-                    res.json(err)
-                    return
-                  }
-                  // successful kick. Return the object.
-                  res.json(reservation)
-                })
-              }
-            }
+
+          const guestIndexOnTheList = reservation.guests.indexOf(
+            req.body.guestId
           )
+
+          if (guestIndexOnTheList < 0) {
+            res.status(400).json({ guestId: 'This guest is not on the list.' })
+            return
+          }
+
+          let guestList = reservation.guests
+          guestList.splice(guestIndexOnTheList, 1)
+
+          reservation.update({ guests: guestList }, function (err, raw) {
+            if (err) res.status(400).json(err)
+            else {
+              Reservation.findById(req.params.id, function (err, reservation) {
+                if (err) {
+                  res.status(400).json(err)
+                  return
+                }
+                // successful kick. Return the object.
+                res.json(reservation)
+              })
+            }
+          })
         } else {
           res.status(401).json({ token: 'Invalid token.' })
         }

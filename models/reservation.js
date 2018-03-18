@@ -4,10 +4,9 @@ var Schema = mongoose.Schema
 
 var reservationSchema = new Schema({
   user: { type: Schema.Types.ObjectId, required: true },
-  guest1: { type: Schema.Types.ObjectId },
-  guest2: { type: Schema.Types.ObjectId },
-  guest3: { type: Schema.Types.ObjectId },
+  guests: { type: [Schema.Types.ObjectId], default: [] },
   // unique because the are only 6 tables that are shifted in time by 5 minutes
+  // (no collision)
   time: { type: Date, required: true, unique: true },
   table: { type: Number, min: 1, max: 6, required: true }
 })
