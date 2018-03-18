@@ -120,6 +120,7 @@ router.get('/available', function (req, res, next) {
   })
 })
 
+// create a new reservation
 router.post('/', function (req, res, next) {
   var token = req.headers['x-access-token']
 
@@ -144,7 +145,6 @@ router.post('/', function (req, res, next) {
         res.status(401).json({ token: 'Token invalid.' })
       } else {
         if ('time' in req.body && 'table' in req.body) {
-          // Everything succeeded
           const timePicked = moment.utc(req.body.time)
 
           const reservation = new Reservation({
@@ -153,7 +153,7 @@ router.post('/', function (req, res, next) {
             table: req.body.table
           })
 
-          // check if time is allowed
+          // v check if time is allowed v //
           const possibleReservations = getPossibleReservations()
 
           if (req.body.table in Object.keys(possibleReservations)) {
@@ -174,7 +174,19 @@ router.post('/', function (req, res, next) {
             res.status(400).json({ table: 'This table does not exist.' })
             return
           }
-          //
+          // ^ check if time is allowed ^ //
+
+          // check if this user is already invited somewhere
+          // Reservation.find({ user: user._id }, function (err, reservations) {
+          //   if (err) {
+          //     res.status(500).json(err)
+          //     return
+          //   }
+
+          //   if (reservations.length > 0) {
+          //     res.status(400).json('You have already made a reservation!')
+          //   }
+          // })
 
           reservation.save(function (err) {
             if (err) {

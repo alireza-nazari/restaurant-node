@@ -10,7 +10,10 @@ const privateKey = fs.readFileSync('./private.key')
 
 /* GET users listing. */
 router.get('/', function (req, res, next) {
-  res.json({ users: 'Hello from /users' })
+  User.find({}, function (err, users) {
+    if (err) res.status(500).json(err)
+    else res.json(users)
+  })
 })
 
 function getNewToken () {
