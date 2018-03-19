@@ -157,7 +157,7 @@ router.post('/', function (req, res, next) {
           // v check if time is allowed v //
           const possibleReservations = getPossibleReservations()
 
-          if (req.body.table in Object.keys(possibleReservations)) {
+          if (req.body.table in possibleReservations) {
             let timePossible = false
             possibleReservations[req.body.table].forEach(
               possibleReservation => {
@@ -168,11 +168,11 @@ router.post('/', function (req, res, next) {
               }
             )
             if (!timePossible) {
-              res.status(400).json({ time: 'This time is not available!' })
+              res.status(400).json('This time is not available!')
               return
             }
           } else {
-            res.status(400).json({ table: 'This table does not exist.' })
+            res.status(400).json('This table does not exist.')
             return
           }
           // ^ check if time is allowed ^ //
