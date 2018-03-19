@@ -211,24 +211,25 @@ router.post('/', function (req, res, next) {
                     return
                   }
                   if (reservation) {
-                    res
-                      .status(400)
-                      .json({ error: 'You are already invited somewhere!' })
+                    res.status(400).json('You are already invited somewhere!')
+                    return
                   }
+
+                  reservationToSave.save(function (err) {
+                    if (err) {
+                      if (err.code === 11000) {
+                        res
+                          .status(400)
+                          .json('This table is already taken for this hour.')
+                      } else {
+                        res.status(500).json(err)
+                      }
+                    } else {
+                      res.json(reservationToSave)
+                    }
+                  })
                 }
               )
-
-              reservationToSave.save(function (err) {
-                if (err) {
-                  if (err.code === 11000) {
-                    res.status(400).json({
-                      table: 'This table is already taken for this hour.'
-                    })
-                  } else res.status(400).json(err)
-                } else {
-                  res.json(reservationToSave)
-                }
-              })
             }
           )
         } else {
@@ -355,23 +356,57 @@ router.post('/:id/invite', function (req, res, next) {
               return
             }
 
-            const guestListUpdated = [...reservation.guests, guestUser]
-
-            // add this guest to the table
-            reservation.update({ guests: guestListUpdated }, function (
+            // check if this user is already invited somewhere
+            Reservation.findOne({ guests: guestUser._id }, function (
               err,
-              raw
+              reservationAsGuest
             ) {
-              if (err) res.status(500).json(err)
-              else {
-                Reservation.findById(req.params.id, function (err, reservation) {
+              if (err) {
+                res.status(500).json(err)
+                return
+              }
+              if (!reservationAsGuest) {
+                // is not invited anywhere
+
+                Reservation.findOne({ user: req.body.guest._id }, function (
+                  err,
+                  reservationAsHost
+                ) {
                   if (err) {
                     res.status(500).json(err)
                     return
                   }
-                  // successful invitation. Return the object
-                  res.json(reservation)
+                  if (!reservationAsHost) {
+                    const guestListUpdated = [...reservation.guests, guestUser]
+
+                    // add this guest to the table
+                    reservation.update({ guests: guestListUpdated }, function (
+                      err,
+                      raw
+                    ) {
+                      if (err) res.status(500).json(err)
+                      else {
+                        Reservation.findById(req.params.id, function (
+                          err,
+                          reservation
+                        ) {
+                          if (err) {
+                            res.status(500).json(err)
+                            return
+                          }
+                          // successful invitation. Return the object
+                          res.json(reservation)
+                        })
+                      }
+                    })
+                  } else {
+                    res
+                      .status(400)
+                      .json('This user has already made a reservation.')
+                  }
                 })
+              } else {
+                res.status(400).json('This user is invited somewhere else.')
               }
             })
           })
