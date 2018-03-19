@@ -30,7 +30,8 @@ const openUntil = moment
   .second(0)
   .millisecond(0)
 
-const consumptionTime = 25 // minutes
+// in minutes
+const consumptionTime = 25
 const cleanupTime = 5
 
 function getPossibleReservations () {
@@ -147,7 +148,7 @@ router.post('/', function (req, res, next) {
         if ('time' in req.body && 'table' in req.body) {
           const timePicked = moment.utc(req.body.time)
 
-          const reservation = new Reservation({
+          const reservationToSave = new Reservation({
             user: user._id,
             time: timePicked,
             table: req.body.table
@@ -177,28 +178,59 @@ router.post('/', function (req, res, next) {
           // ^ check if time is allowed ^ //
 
           // check if this user is already invited somewhere
-          // Reservation.find({ user: user._id }, function (err, reservations) {
-          //   if (err) {
-          //     res.status(500).json(err)
-          //     return
-          //   }
+          Reservation.findOne(
+            {
+              time: {
+                $gte: openFrom,
+                $lte: openUntil
+              },
+              user: user._id
+            },
+            function (err, reservation) {
+              if (err) {
+                res.status(500).json(err)
+                return
+              }
 
-          //   if (reservations.length > 0) {
-          //     res.status(400).json('You have already made a reservation!')
-          //   }
-          // })
+              if (reservation) {
+                res.status(400).json('You have already made a reservation!')
+                return
+              }
 
-          reservation.save(function (err) {
-            if (err) {
-              if (err.code === 11000) {
-                res.status(400).json({
-                  table: 'This table is already taken for this hour.'
-                })
-              } else res.status(400).json(err)
-            } else {
-              res.json({ reservation })
+              Reservation.findOne(
+                {
+                  time: {
+                    $gte: openFrom,
+                    $lte: openUntil
+                  },
+                  guests: user._id
+                },
+                function (err, reservation) {
+                  if (err) {
+                    res.status(500).json(err)
+                    return
+                  }
+                  if (reservation) {
+                    res
+                      .status(400)
+                      .json({ error: 'You are already invited somewhere!' })
+                  }
+                }
+              )
+
+              reservationToSave.save(function (err) {
+                if (err) {
+                  if (err.code === 11000) {
+                    res.status(400).json({
+                      table: 'This table is already taken for this hour.'
+                    })
+                  } else res.status(400).json(err)
+                } else {
+                  res.json(reservationToSave)
+                }
+              })
             }
-          })
+          )
         } else {
           res.status(400).json('Please specify `time` and `table` fields.')
         }
@@ -230,10 +262,22 @@ router.get('/mine', function (req, res, next) {
       } else if (!user) {
         res.status(401).json({ token: 'Token invalid.' })
       } else {
-        Reservation.find({ user }, function (err, reservations) {
-          if (err) res.status(400).json(err)
-          else {
-            res.json(reservations)
+        Reservation.findOne({ user }, function (err, reservation) {
+          if (err) res.status(500).json(err)
+          else if (!reservation) {
+            Reservation.findOne({ guest: user._id }, function (
+              err,
+              reservation
+            ) {
+              if (err) res.status(500).json(err)
+              else if (!reservation) {
+                res.status(404).json('No reservations.')
+              } else {
+                res.json(reservation)
+              }
+            })
+          } else {
+            res.json(reservation)
           }
         })
       }
@@ -259,13 +303,13 @@ router.post('/:id/invite', function (req, res, next) {
   ) {
     if (err) {
       // checks if expired, etc.
-      res.status(400).json(err)
+      res.status(500).json(err)
       return
     }
     // get the user by token
     User.findOne({ token }, function (err, user) {
       if (err) {
-        res.status(400).json(err)
+        res.status(500).json(err)
         return
       } else if (!user) {
         res.status(401).json({ token: 'Token invalid.' })
@@ -273,7 +317,7 @@ router.post('/:id/invite', function (req, res, next) {
       }
       Reservation.findById(req.params.id, function (err, reservation) {
         if (err) {
-          res.json(err)
+          res.status(500).json(err)
           return
         }
         if (reservation.user.equals(user._id)) {
@@ -281,35 +325,33 @@ router.post('/:id/invite', function (req, res, next) {
           // get guest ID
           User.findOne({ username: req.body.guest }, function (err, guestUser) {
             if (err) {
-              res.status(400).json(err)
+              res.status(500).json(err)
               return
             }
             if (!guestUser) {
-              res.status(400).json({
-                guest: 'Guest with the specified username not found.'
-              })
+              res
+                .status(404)
+                .json('Guest with the specified username not found.')
               return
             }
 
             // check if this user is trying to invite himself
             if (guestUser._id.equals(user._id)) {
-              res.status(400).json({ guest: 'You cannot invite yourself!' })
+              res.status(400).json('You cannot invite yourself!')
               return
             }
 
             // check if the maximum number of guests has been reached
             if (reservation.guests.length >= 3) {
-              res.status(400).json({
-                guests: 'The maximum number of guests has been reached.'
-              })
+              res
+                .status(400)
+                .json('The maximum number of guests has been reached.')
               return
             }
 
             // check whether this user has already been invited
             if (reservation.guests.indexOf(guestUser._id) > -1) {
-              res.status(400).json({
-                guest: 'This guest has already been invited!'
-              })
+              res.status(400).json('This guest has already been invited!')
               return
             }
 
@@ -320,11 +362,11 @@ router.post('/:id/invite', function (req, res, next) {
               err,
               raw
             ) {
-              if (err) res.status(400).json(err)
+              if (err) res.status(500).json(err)
               else {
                 Reservation.findById(req.params.id, function (err, reservation) {
                   if (err) {
-                    res.status(400).json(err)
+                    res.status(500).json(err)
                     return
                   }
                   // successful invitation. Return the object
@@ -334,7 +376,7 @@ router.post('/:id/invite', function (req, res, next) {
             })
           })
         } else {
-          res.status(401).json({ token: 'Invalid token.' })
+          res.status(401).json('Invalid token.')
         }
       })
     })

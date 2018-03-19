@@ -4,6 +4,7 @@ var favicon = require('serve-favicon')
 var logger = require('morgan')
 var cookieParser = require('cookie-parser')
 var bodyParser = require('body-parser')
+var cors = require('cors')
 
 var index = require('./routes/index')
 var users = require('./routes/users')
@@ -15,6 +16,14 @@ var mongoose = require('mongoose')
 var { MONGO_URI } = require('./mongoConfig')
 
 var app = express()
+
+// set up CORS
+var corsOptions = {
+  origin: 'http://localhost:3001',
+  optionsSuccessStatus: 200
+}
+
+app.use(cors(corsOptions))
 
 // mongoose setup
 mongoose.connect(MONGO_URI)

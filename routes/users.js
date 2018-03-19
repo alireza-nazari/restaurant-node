@@ -49,21 +49,23 @@ router.post('/', function (req, res, next) {
 router.post('/login', function (req, res, next) {
   // validation
   if (!('username' in req.body)) {
-    res.status(400).json({ username: 'Provide an `username` field' })
+    res.status(400).json({ username: 'Provide the `username` field' })
     return
   }
   if (!('password' in req.body)) {
-    res.status(400).json({ username: 'Provide a `password` field' })
+    res.status(400).json({ username: 'Provide the `password` field' })
     return
   }
 
   User.findOne({ username: req.body.username }, function (err, user) {
     if (err) {
-      res.json(err)
+      res.status(500).json(err)
       return
     }
     if (!user) {
-      res.json({ username: 'User with a given `username` was not found.' })
+      res
+        .status(404)
+        .json({ username: 'User with a given `username` was not found.' })
       return
     }
 
@@ -74,8 +76,7 @@ router.post('/login', function (req, res, next) {
         if (isMatch) {
           var token = getNewToken()
           user.update({ token }, function (err, raw) {
-            console.log(raw)
-            if (err) res.json(err)
+            if (err) res.status(500).json(err)
             else res.json({ token, id: user._id, username: user.username })
           })
         } else {
