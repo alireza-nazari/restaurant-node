@@ -266,7 +266,7 @@ router.get('/mine', function (req, res, next) {
         Reservation.findOne({ user }, function (err, reservation) {
           if (err) res.status(500).json(err)
           else if (!reservation) {
-            Reservation.findOne({ guest: user._id }, function (
+            Reservation.findOne({ guests: user._id }, function (
               err,
               reservation
             ) {
