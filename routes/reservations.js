@@ -263,24 +263,41 @@ router.get('/mine', function (req, res, next) {
       } else if (!user) {
         res.status(401).json({ token: 'Token invalid.' })
       } else {
-        Reservation.findOne({ user }, function (err, reservation) {
-          if (err) res.status(500).json(err)
-          else if (!reservation) {
-            Reservation.findOne({ guests: user._id }, function (
-              err,
-              reservation
-            ) {
-              if (err) res.status(500).json(err)
-              else if (!reservation) {
-                res.status(404).json('No reservations.')
-              } else {
-                res.json(reservation)
-              }
-            })
-          } else {
-            res.json(reservation)
+        // get the reservation where the user is the creator
+        Reservation.findOne(
+          {
+            user,
+            time: {
+              $gte: openFrom,
+              $lte: openUntil
+            }
+          },
+          function (err, reservation) {
+            if (err) res.status(500).json(err)
+            else if (!reservation) {
+              // if not, get the reservation where the user is a guest
+              Reservation.findOne(
+                {
+                  guests: user._id,
+                  time: {
+                    $gte: openFrom,
+                    $lte: openUntil
+                  }
+                },
+                function (err, reservation) {
+                  if (err) res.status(500).json(err)
+                  else if (!reservation) {
+                    res.status(404).json('No reservations.')
+                  } else {
+                    res.json(reservation)
+                  }
+                }
+              )
+            } else {
+              res.json(reservation)
+            }
           }
-        })
+        )
       }
     })
   })
