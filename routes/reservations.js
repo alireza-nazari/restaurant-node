@@ -13,7 +13,7 @@ const publicKey = fs.readFileSync('./public.key')
 const OPEN_FROM_HOUR = 8
 const OPEN_FROM_MINUTE = 0
 
-const OPEN_UNTIL_HOUR = 16
+const OPEN_UNTIL_HOUR = 23
 const OPEN_UNTIL_MINUTE = 0
 
 const openFrom = moment
@@ -76,7 +76,7 @@ router.get('/', function (req, res, next) {
     err,
     reservations
   ) {
-    if (err) res.status(400).json(err)
+    if (err) res.status(500).json(err)
     else res.json(reservations)
   })
 })
@@ -196,7 +196,9 @@ router.post('/', function (req, res, next) {
               }
 
               if (reservation) {
-                res.status(400).json('You have already made a reservation!')
+                res
+                  .status(400)
+                  .json('You have already made a reservation today!')
                 return
               }
 
@@ -271,7 +273,7 @@ router.get('/mine', function (req, res, next) {
           {
             user,
             time: {
-              $gte: openFrom,
+              $gte: moment.utc(),
               $lte: openUntil
             }
           },
@@ -283,7 +285,7 @@ router.get('/mine', function (req, res, next) {
                 {
                   guests: user._id,
                   time: {
-                    $gte: openFrom,
+                    $gte: moment.utc(),
                     $lte: openUntil
                   }
                 },
@@ -507,6 +509,109 @@ router.post('/:id/kick', function (req, res, next) {
           res.status(401).json({ token: 'Invalid token.' })
         }
       })
+    })
+  })
+})
+
+router.post('/:id/cancel', function (req, res, next) {
+  var token = req.headers['x-access-token']
+
+  if (!token) {
+    return res.status(401).json({ auth: false, message: 'No token provided.' })
+  }
+
+  jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
+    err,
+    decoded
+  ) {
+    if (err) {
+      // checks if expired, etc.
+      res.status(400).json(err)
+      return
+    }
+    // get the user by token
+    User.findOne({ token }, function (err, user) {
+      if (err) {
+        res.status(500).json(err)
+      } else if (!user) {
+        res.status(401).json({ token: 'Token invalid.' })
+        return
+      }
+
+      Reservation.findOneAndRemove(
+        {
+          user: user._id,
+          _id: req.params.id,
+          time: {
+            $gte: moment.utc(),
+            $lte: openUntil
+          }
+        },
+        function (err, r) {
+          if (err) {
+            res.status(500).json(err)
+            return
+          }
+          if (!r) {
+            res.status(404).json('Reservation not found.')
+            return
+          }
+
+          res.status(204).json('Event has been removed.')
+        }
+      )
+    })
+  })
+})
+
+router.post('/:id/not-going', function (req, res, next) {
+  var token = req.headers['x-access-token']
+
+  if (!token) {
+    return res.status(401).json({ auth: false, message: 'No token provided.' })
+  }
+
+  jwt.verify(token, publicKey, { algorithms: ['RS256'] }, function (
+    err,
+    decoded
+  ) {
+    if (err) {
+      // checks if expired, etc.
+      res.status(400).json(err)
+      return
+    }
+    // get the user by token
+    User.findOne({ token }, function (err, user) {
+      if (err) {
+        res.status(500).json(err)
+        return
+      } else if (!user) {
+        res.status(401).json({ token: 'Token invalid.' })
+        return
+      }
+
+      Reservation.findOne(
+        {
+          guests: user._id,
+          _id: req.params.id,
+          time: {
+            $gte: moment.utc(),
+            $lte: openUntil
+          }
+        },
+        function (err, reservation) {
+          if (err) {
+            res.status(500).json(err)
+            return
+          }
+          if (!reservation) {
+            res.status(404).json('Reservation not found.')
+            return
+          }
+
+          res.status(204).json('You have been removed from the guest list.')
+        }
+      )
     })
   })
 })
