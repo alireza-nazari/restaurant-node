@@ -46,22 +46,25 @@ function getPossibleReservations () {
   }
 
   Object.keys(availableHours).forEach(function (key) {
-    var val = availableHours[key]
+    var hoursPerTable = availableHours[key]
 
     while (
-      val[val.length - 1]
+      hoursPerTable[hoursPerTable.length - 1]
         .clone()
-        .add(consumptionTime, 'minutes')
-        .isBefore(
+        .add(consumptionTime + cleanupTime, 'minutes')
+        .isSameOrBefore(
           openUntil.clone().subtract(consumptionTime + cleanupTime, 'minutes')
         )
     ) {
-      val.push(
-        val[val.length - 1]
+      hoursPerTable.push(
+        hoursPerTable[hoursPerTable.length - 1]
           .clone()
           .add(consumptionTime + cleanupTime, 'minutes')
       )
     }
+
+    hoursPerTable = hoursPerTable.filter(hour => hour.isAfter(moment.utc()))
+    availableHours[key] = hoursPerTable
   })
 
   return availableHours
