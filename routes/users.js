@@ -26,10 +26,11 @@ function getNewToken () {
 // create a new user
 router.post('/', function (req, res, next) {
   if (req.body.password && req.body.password.length < 6) {
-    res.status(400).json({ password: 'Provide at least 6 characters' })
+    res.status(400).json('Provide at least 6 characters for the password.')
     return
   }
   var token = getNewToken()
+
   const user = new User({
     username: req.body.username,
     password: req.body.password,
@@ -37,7 +38,11 @@ router.post('/', function (req, res, next) {
   })
   user.save(function (err) {
     if (err) {
-      res.status(400).json({ message: err.message })
+      if (err.code === 11000) {
+        res.status(400).json('This username is taken!')
+        return
+      }
+      res.status(500).json(err)
     } else {
       res.json({ id: user._id, username: user.username, token })
     }
@@ -49,11 +54,11 @@ router.post('/', function (req, res, next) {
 router.post('/login', function (req, res, next) {
   // validation
   if (!('username' in req.body)) {
-    res.status(400).json({ username: 'Provide the `username` field' })
+    res.status(400).json('Provide the username field')
     return
   }
   if (!('password' in req.body)) {
-    res.status(400).json({ username: 'Provide the `password` field' })
+    res.status(400).json('Provide the password field')
     return
   }
 
@@ -63,9 +68,7 @@ router.post('/login', function (req, res, next) {
       return
     }
     if (!user) {
-      res
-        .status(404)
-        .json({ username: 'User with a given `username` was not found.' })
+      res.status(404).json('User with a given username was not found.')
       return
     }
 
@@ -80,7 +83,7 @@ router.post('/login', function (req, res, next) {
             else res.json({ token, id: user._id, username: user.username })
           })
         } else {
-          res.status(400).json({ password: 'Password incorrect.' })
+          res.status(400).json('Password incorrect.')
         }
       }
     })

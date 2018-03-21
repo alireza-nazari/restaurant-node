@@ -23,7 +23,8 @@ var corsOptions = {
   optionsSuccessStatus: 200
 }
 
-app.use(cors(corsOptions))
+// app.use(cors(corsOptions))
+app.use(cors())
 
 // mongoose setup
 mongoose.connect(MONGO_URI)

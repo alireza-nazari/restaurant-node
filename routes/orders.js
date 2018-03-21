@@ -12,7 +12,7 @@ const Product = require('../models/product')
 const moment = require('moment')
 
 const publicKey = fs.readFileSync('./public.key')
-const privateKey = fs.readFileSync('./private.key')
+// const privateKey = fs.readFileSync('./private.key')
 
 /* GET orders listing. */
 router.get('/', function (req, res, next) {
@@ -56,110 +56,109 @@ router.post('/:reservationId', function (req, res, next) {
   ) {
     if (err) {
       // checks if expired, etc.
-      res.status(400).json(err)
-    } else {
-      User.findOne({ token }, function (err, user) {
+      res.status(500).json(err)
+      return
+    }
+    User.findOne({ token }, function (err, user) {
+      if (err) {
+        res.status(500).json(err)
+        return
+      }
+      if (!user) {
+        res.status(401).json({ token: 'Token invalid.' })
+        return
+      }
+
+      if (!('product' in req.body)) {
+        res.status(400).json({ productId: '`product` not specified' })
+        return
+      }
+
+      Product.findById(req.body.product, function (err, product) {
         if (err) {
-          res.status(400).json(err)
+          res.status(500).json(err)
           return
         }
-        if (!user) {
-          res.status(401).json({ token: 'Token invalid.' })
+        if (!product) {
+          console.log('PRODUCT NOT FOUND!!')
+          res.status(404).json({
+            product: `Specified product ${req.body.product} does not exist.`
+          })
           return
         }
 
-        if (!('product' in req.body)) {
-          res.status(400).json({ productId: '`product` not specified' })
+        if (!('reservation' in req.body)) {
+          res.status(400).json({ reservation: '`reservation` not specified' })
           return
         }
 
-        Product.findById(req.body.product, function (err, product) {
+        if (!('amount' in req.body)) {
+          res.status(400).json({ amount: '`amount` not specified' })
+          return
+        }
+
+        const { amount } = req.body
+        const reservationId = req.body.reservation
+
+        Reservation.findById(reservationId, function (err, reservation) {
           if (err) {
-            res.status(500).json(err)
+            console.log(err)
+            res.status(500).json({ error: 'Internal server error.' })
             return
           }
-          if (!product) {
-            console.log('PRODUCT NOT FOUND!!')
+
+          if (!reservation) {
             res.status(404).json({
-              product: `Specified product ${req.body.product} does not exist.`
+              reservationId: `Reservation ${reservationId} was not found`
             })
             return
           }
 
-          if (!('reservation' in req.body)) {
-            res.status(400).json({ reservation: '`reservation` not specified' })
-            return
-          }
+          // check if this user is on the guest list
+          let userIsPartOfTheReservation = false
 
-          if (!('amount' in req.body)) {
-            res.status(400).json({ amount: '`amount` not specified' })
-            return
-          }
-
-          const { amount } = req.body
-          const reservationId = req.body.reservation
-
-          Reservation.findById(reservationId, function (err, reservation) {
-            if (err) {
-              console.log(err)
-              res.status(500).json({ error: 'Internal server error.' })
-              return
-            }
-
-            if (!reservation) {
-              res.status(404).json({
-                reservationId: `Reservation ${reservationId} was not found`
-              })
-              return
-            }
-
-            // check if this user is on the guest list
-            let userIsPartOfTheReservation = false
-
-            reservation.guests.forEach(guest => {
-              if (guest.equals(user._id)) {
-                userIsPartOfTheReservation = true
-                console.log('User is on the guest list.')
-              }
-            })
-
-            // check if this user is the creator of the reservation
-            if (reservation.user.equals(user._id)) {
+          reservation.guests.forEach(guest => {
+            if (guest.equals(user._id)) {
               userIsPartOfTheReservation = true
-              console.log('User is the creator of the event.')
+              console.log('User is on the guest list.')
             }
+          })
 
-            if (!userIsPartOfTheReservation) {
-              res
-                .status(401)
-                .json({ attendee: 'You are not a part of this event.' })
-              return
-            }
+          // check if this user is the creator of the reservation
+          if (reservation.user.equals(user._id)) {
+            userIsPartOfTheReservation = true
+            console.log('User is the creator of the event.')
+          }
 
-            const reservationTime = moment.utc(reservation.time)
-            if (reservationTime.isBefore(moment.utc())) {
-              res.status(400).json({
-                time:
-                  'You cannot order products for a reservation that already took place!'
-              })
-              return
-            }
+          if (!userIsPartOfTheReservation) {
+            res.status(401).json('You are not a part of this event.')
+            return
+          }
 
-            const order = new Order({
-              user: user._id,
-              product: product._id,
-              reservation,
-              amount
-            })
+          const reservationTime = moment.utc(reservation.time)
+          if (reservationTime.isBefore(moment.utc())) {
+            res
+              .status(400)
+              .json(
+                'You cannot order products for a reservation that already took place!'
+              )
+            return
+          }
 
-            order.save(function (err) {
-              if (err) res.status(400).json(err)
-              else res.json(order)
-            })
+          const order = new Order({
+            user: user._id,
+            product: product._id,
+            reservation,
+            amount
+          })
+
+          order.save(function (err) {
+            if (err) res.status(500).json(err)
+            else res.json(order)
           })
         })
       })
-    }
+    })
   })
 })
 
