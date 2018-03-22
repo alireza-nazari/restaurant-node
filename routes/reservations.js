@@ -379,58 +379,73 @@ router.post('/:id/invite', function (req, res, next) {
             }
 
             // check if this user is already invited somewhere
-            Reservation.findOne({ guests: guestUser._id }, function (
-              err,
-              reservationAsGuest
-            ) {
-              if (err) {
-                res.status(500).json(err)
-                return
-              }
-              if (!reservationAsGuest) {
-                // is not invited anywhere
+            Reservation.findOne(
+              {
+                time: {
+                  $gte: openFrom,
+                  $lte: openUntil
+                },
+                guests: guestUser._id
+              },
+              function (err, reservationAsGuest) {
+                if (err) {
+                  res.status(500).json(err)
+                  return
+                }
+                if (!reservationAsGuest) {
+                  // is not invited anywhere
 
-                Reservation.findOne({ user: req.body.guest._id }, function (
-                  err,
-                  reservationAsHost
-                ) {
-                  if (err) {
-                    res.status(500).json(err)
-                    return
-                  }
-                  if (!reservationAsHost) {
-                    const guestListUpdated = [...reservation.guests, guestUser]
-
-                    // add this guest to the table
-                    reservation.update({ guests: guestListUpdated }, function (
-                      err,
-                      raw
-                    ) {
-                      if (err) res.status(500).json(err)
-                      else {
-                        Reservation.findById(req.params.id, function (
-                          err,
-                          reservation
-                        ) {
-                          if (err) {
-                            res.status(500).json(err)
-                            return
-                          }
-                          // successful invitation. Return the object
-                          res.json(reservation)
-                        })
+                  Reservation.findOne(
+                    {
+                      time: {
+                        $gte: openFrom,
+                        $lte: openUntil
+                      },
+                      user: req.body.guest._id
+                    },
+                    function (err, reservationAsHost) {
+                      if (err) {
+                        res.status(500).json(err)
+                        return
                       }
-                    })
-                  } else {
-                    res
-                      .status(400)
-                      .json('This user has already made a reservation.')
-                  }
-                })
-              } else {
-                res.status(400).json('This user is invited somewhere else.')
+                      if (!reservationAsHost) {
+                        const guestListUpdated = [
+                          ...reservation.guests,
+                          guestUser
+                        ]
+
+                        // add this guest to the table
+                        reservation.update(
+                          { guests: guestListUpdated },
+                          function (err, raw) {
+                            if (err) res.status(500).json(err)
+                            else {
+                              Reservation.findById(req.params.id, function (
+                                err,
+                                reservation
+                              ) {
+                                if (err) {
+                                  res.status(500).json(err)
+                                  return
+                                }
+                                // successful invitation. Return the object
+                                res.json(reservation)
+                              })
+                            }
+                          }
+                        )
+                      } else {
+                        res
+                          .status(400)
+                          .json('This user has already made a reservation.')
+                      }
+                    }
+                  )
+                } else {
+                  res.status(400).json('This user is invited somewhere else.')
+                }
               }
-            })
+            )
           })
         } else {
           res.status(401).json('Invalid token.')
@@ -577,7 +592,7 @@ router.post('/:id/not-going', function (req, res, next) {
   ) {
     if (err) {
       // checks if expired, etc.
-      res.status(400).json(err)
+      res.status(500).json(err)
       return
     }
     // get the user by token
@@ -609,7 +624,18 @@ router.post('/:id/not-going', function (req, res, next) {
             return
           }
 
-          res.status(204).json('You have been removed from the guest list.')
+          const indexOfGuest = reservation.guests.indexOf(user._id)
+          reservation.guests.splice(indexOfGuest, 1)
+
+          reservation.update({ guests: reservation.guests }, function (
+            err,
+            raw
+          ) {
+            if (err) res.status(500).json(err)
+            else {
+              res.status(204).json('You have been removed from the guest list.')
+            }
+          })
         }
       )
     })
